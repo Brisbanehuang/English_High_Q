@@ -50,7 +50,7 @@ class Transaction(db.Model):
 
 # 豆包API配置
 DOUBAO_API_URL = "https://api.doubao.com/v1/chat/completions"  # 假设的API地址
-DOUBAO_API_KEY = "404e2f9b-5a08-49cd-9fd7-5506d2d90998"  # 实际使用时需要替换为真实的API密钥
+DOUBAO_API_KEY = "YOUR-API-KEY"  # 实际使用时需要替换为真实的API密钥
 
 # 费率设置 (每1000个token的价格，单位：元)
 TOKEN_PRICE = 0.01
