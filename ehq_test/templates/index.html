@@ -1,0 +1,212 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">英语题目解答</h4>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="question" class="form-label">请输入您的英语题目</label>
+                    <textarea class="form-control" id="question" rows="5" placeholder="在这里输入您的英语题目..."></textarea>
+                </div>
+                <div class="d-grid gap-2">
+                    <button id="submit-btn" class="btn btn-primary">提交问题</button>
+                </div>
+                <div class="mt-3">
+                    <p class="text-muted small">说明：系统会根据题目的复杂度和长度计算token用量，并从您的账户余额中扣除相应费用。</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="answer-container" class="card mb-4 d-none">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">解答结果</h4>
+            </div>
+            <div class="card-body">
+                <div id="answer-content" class="markdown-body"></div>
+                <div class="mt-3 text-end">
+                    <span class="badge bg-info" id="token-usage">Token用量: 0</span>
+                    <span class="badge bg-warning" id="cost-info">费用: ¥0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-indicator" class="text-center d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>正在分析题目，请稍候...</p>
+        </div>
+
+        <div id="error-container" class="alert alert-danger d-none">
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">历史记录</h4>
+            </div>
+            <div class="card-body">
+                <div id="history-container">
+                    <p class="text-center text-muted" id="no-history-message">暂无历史记录</p>
+                    <ul class="list-group" id="history-list"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .markdown-body {
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
+    .history-item {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .history-item:hover {
+        background-color: #f0f0f0;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const questionInput = document.getElementById('question');
+        const submitBtn = document.getElementById('submit-btn');
+        const answerContainer = document.getElementById('answer-container');
+        const answerContent = document.getElementById('answer-content');
+        const tokenUsage = document.getElementById('token-usage');
+        const costInfo = document.getElementById('cost-info');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        const historyList = document.getElementById('history-list');
+        const noHistoryMessage = document.getElementById('no-history-message');
+
+        // 加载历史记录
+        loadConversationHistory();
+
+        // 提交问题
+        submitBtn.addEventListener('click', function() {
+            const question = questionInput.value.trim();
+            
+            if (!question) {
+                showError('请输入英语题目');
+                return;
+            }
+            
+            // 显示加载指示器
+            loadingIndicator.classList.remove('d-none');
+            answerContainer.classList.add('d-none');
+            errorContainer.classList.add('d-none');
+            submitBtn.disabled = true;
+            
+            // 发送请求
+            fetch('/api/ask', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ question: question })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `请求失败: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // 隐藏加载指示器
+                loadingIndicator.classList.add('d-none');
+                
+                // 显示答案
+                answerContainer.classList.remove('d-none');
+                answerContent.innerHTML = marked.parse(data.answer);
+                tokenUsage.textContent = `Token用量: ${data.tokens_used}`;
+                costInfo.textContent = `费用: ¥${data.cost.toFixed(2)}`;
+                
+                // 更新历史记录
+                loadConversationHistory();
+                
+                // 重置按钮
+                submitBtn.disabled = false;
+            })
+            .catch(error => {
+                // 隐藏加载指示器
+                loadingIndicator.classList.add('d-none');
+                
+                // 显示错误
+                showError(error.message);
+                
+                // 重置按钮
+                submitBtn.disabled = false;
+            });
+        });
+
+        // 加载对话历史
+        function loadConversationHistory() {
+            fetch('/api/conversation_history')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length === 0) {
+                        noHistoryMessage.classList.remove('d-none');
+                        historyList.innerHTML = '';
+                        return;
+                    }
+                    
+                    noHistoryMessage.classList.add('d-none');
+                    historyList.innerHTML = '';
+                    
+                    data.slice(0, 10).forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item history-item';
+                        
+                        // 格式化日期
+                        const date = new Date(item.created_at);
+                        const formattedDate = `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                        
+                        // 截取问题前30个字符
+                        const shortQuestion = item.question.length > 30 ? item.question.substring(0, 30) + '...' : item.question;
+                        
+                        li.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>${shortQuestion}</span>
+                                <small class="text-muted">${formattedDate}</small>
+                            </div>
+                        `;
+                        
+                        // 点击历史记录项显示详情
+                        li.addEventListener('click', function() {
+                            questionInput.value = item.question;
+                            answerContainer.classList.remove('d-none');
+                            answerContent.innerHTML = marked.parse(item.answer);
+                            tokenUsage.textContent = `Token用量: ${item.tokens_used}`;
+                            costInfo.textContent = `费用: ¥${item.cost.toFixed(2)}`;
+                        });
+                        
+                        historyList.appendChild(li);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading history:', error);
+                });
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            errorContainer.classList.remove('d-none');
+            errorMessage.textContent = message;
+        }
+    });
+</script>
+{% endblock %}
